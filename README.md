@@ -1,6 +1,6 @@
 # gtp-reviewer
 
-[![CI](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml) [![Release](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml)
+[![CI](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml) [![Release](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml) [![Marketplace](https://img.shields.io/badge/Marketplace-Codex%20Review%20with%20Merge%20Confidence-2ea44f?logo=github)](https://github.com/marketplace/actions/codex-review-with-merge-confidence) [![Latest release](https://img.shields.io/github/v/release/juliomatcom/gtp-reviewer)](https://github.com/juliomatcom/gtp-reviewer/releases/latest)
 
 A composite action that reviews a pull request with Codex and posts the result:
 
