@@ -1,5 +1,9 @@
-name: GPT reviewer
+name: Codex Review with Merge Confidence
 description: Review a pull request with Codex and post inline findings and a merge confidence, approving on high confidence.
+
+branding:
+  icon: check-circle
+  color: green
 
 inputs:
   openai-api-key:
