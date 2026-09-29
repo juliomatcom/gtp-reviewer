@@ -1,6 +1,6 @@
 # gtp-reviewer
 
-[![Release](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml)
+[![CI](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/ci.yml) [![Release](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml/badge.svg)](https://github.com/juliomatcom/gtp-reviewer/actions/workflows/release.yml)
 
 A composite action that reviews a pull request with Codex and posts the result:
 
