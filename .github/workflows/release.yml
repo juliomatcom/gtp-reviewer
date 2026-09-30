@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+    # A docs-only change ships no new behavior, so it cuts no release.
+    paths-ignore: ['**.md']
 
 permissions:
   contents: write
