@@ -38,12 +38,18 @@ runs:
         ref: refs/pull/${{ github.event.pull_request.number }}/merge
         persist-credentials: false
 
+    # Checkout drops its credentials so Codex never sees them, and a private repo refuses an
+    # anonymous fetch: authenticate this one command without writing the token to git config.
     - name: Fetch base and head refs
       shell: bash
       env:
+        GH_TOKEN: ${{ inputs.github-token }}
         PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-      run: git fetch --no-tags origin "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" "+refs/pull/$PR_NUMBER/head"
+      run: |
+        auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+        git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+          fetch --no-tags origin "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" "+refs/pull/$PR_NUMBER/head"
 
     - name: Build prompt
       uses: actions/github-script@v7
