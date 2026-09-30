@@ -41,7 +41,7 @@ runs:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
       run: |
         if [ -z "$OPENAI_API_KEY" ]; then
-          echo "::error title=openai-api-key is empty::The secret passed as openai-api-key is not visible to this workflow. Organization secrets do not reach private repositories on the GitHub Free plan; add it as a repository secret instead."
+          echo "::error title=openai-api-key is empty::Check that the secret passed as openai-api-key exists and that this workflow can read it."
           exit 1
         fi
 
