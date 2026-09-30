@@ -50,7 +50,7 @@ jobs:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: juliomatcom/gtp-reviewer@v0.2.1
+      - uses: juliomatcom/gtp-reviewer@v0.2.3 # <-- Make sure to use the latest version
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           instructions-file: .github/codex/review.md
