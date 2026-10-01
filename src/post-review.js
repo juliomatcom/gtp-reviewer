@@ -30,6 +30,25 @@ const summary = ({ findings, confidence, justification, unverified }, inline, us
 
 const BOT = 'github-actions[bot]';
 
+// Octokit reports a network failure ("fetch failed") as a 500, so a status of 500 or more covers both.
+const isTransient = (error) => (error.status ?? 500) >= 500;
+const RETRY_DELAYS_MS = [2000, 6000, 15000];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Posting is the last step of a finished, paid review: a GitHub blip must not throw it away.
+const createReview = async (github, core, params) => {
+  for (let retry = 0; ; retry++) {
+    try {
+      return await github.rest.pulls.createReview(params);
+    } catch (error) {
+      if (!isTransient(error) || retry >= RETRY_DELAYS_MS.length) throw error;
+      const seconds = RETRY_DELAYS_MS[retry] / 1000;
+      core.warning(`GitHub did not answer (${error.message}); retrying in ${seconds}s`);
+      await sleep(RETRY_DELAYS_MS[retry]);
+    }
+  }
+};
+
 // A stale approval would outlive a later push that lowered confidence.
 const dismissApprovals = async (github, pull) => {
   const reviews = await github.paginate(github.rest.pulls.listReviews, pull);
@@ -76,7 +95,7 @@ export default async function postReview({ github, context, core }) {
 
   for (const [index, attempt] of attempts.entries()) {
     try {
-      await github.rest.pulls.createReview({
+      await createReview(github, core, {
         ...pull,
         commit_id: context.payload.pull_request.head.sha,
         ...attempt,
