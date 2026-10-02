@@ -41,13 +41,9 @@ export const makeGithub = ({ reviews = [] } = {}) => {
   return github;
 };
 
-/** Makes the retry backoff instant and records the delays it asked for. */
-export const instantTimers = () => {
-  const delays = [];
-  jest.spyOn(globalThis, 'setTimeout').mockImplementation((fn, ms) => {
-    delays.push(ms);
-    fn();
-    return 0;
-  });
-  return delays;
+/** A sleep that returns at once and records the delays it was asked for. */
+export const makeSleep = () => {
+  const sleep = jest.fn(async () => {});
+  sleep.delays = () => sleep.mock.calls.map(([ms]) => ms);
+  return sleep;
 };
