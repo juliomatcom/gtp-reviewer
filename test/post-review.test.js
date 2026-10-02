@@ -189,10 +189,10 @@ describe('retrying transient GitHub errors', () => {
       .mockRejectedValueOnce(httpError(500))
       .mockResolvedValueOnce({});
     const { core, sleep } = await run({ github });
-    expect(sleep.delays()).toEqual([2000, 6000]);
+    expect(sleep.delays()).toEqual([5000, 10000]);
     expect(created(github)).toHaveLength(3);
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('retrying in 2s'));
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('retrying in 6s'));
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('retrying in 5s'));
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('retrying in 10s'));
   });
 
   it('treats a network failure without a status as transient', async () => {
@@ -204,13 +204,13 @@ describe('retrying transient GitHub errors', () => {
     expect(created(github)).toHaveLength(2);
   });
 
-  it('gives up after three retries and ends: it does not try the other variants', async () => {
+  it('gives up after four retries and ends: it does not try the other variants', async () => {
     const github = makeGithub();
     github.rest.pulls.createReview.mockRejectedValue(httpError(503));
     const sleep = makeSleep();
     await expect(run({ github, sleep })).rejects.toThrow('HTTP 503');
-    expect(sleep.delays()).toEqual([2000, 6000, 15000]);
-    expect(created(github)).toHaveLength(4);
+    expect(sleep.delays()).toEqual([5000, 10000, 20000, 25000]);
+    expect(created(github)).toHaveLength(5);
   });
 
   it('never downgrades an approval to a comment because GitHub did not answer', async () => {

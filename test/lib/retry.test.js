@@ -45,19 +45,20 @@ describe('withRetry', () => {
       .mockRejectedValueOnce(httpError(502, 'bad gateway'))
       .mockResolvedValueOnce('done');
     expect(await withRetry(core, sleep, call)).toBe('done');
-    expect(sleep.delays()).toEqual([2000, 6000]);
-    expect(core.warning).toHaveBeenCalledWith('GitHub did not answer (boom); retrying in 2s');
+    expect(sleep.delays()).toEqual([5000, 10000]);
+    expect(core.warning).toHaveBeenCalledWith('GitHub did not answer (boom); retrying in 5s');
     expect(core.warning).toHaveBeenCalledWith(
-      'GitHub did not answer (bad gateway); retrying in 6s',
+      'GitHub did not answer (bad gateway); retrying in 10s',
     );
   });
 
-  it('gives up after the third retry and throws the last error', async () => {
+  it('gives up after the fourth retry, a minute in, and throws the last error', async () => {
     const sleep = makeSleep();
     const call = jest.fn().mockRejectedValue(httpError(503, 'down'));
     await expect(withRetry(makeCore(), sleep, call)).rejects.toThrow('down');
-    expect(call).toHaveBeenCalledTimes(4);
-    expect(sleep.delays()).toEqual([2000, 6000, 15000]);
+    expect(call).toHaveBeenCalledTimes(5);
+    expect(sleep.delays()).toEqual([5000, 10000, 20000, 25000]);
+    expect(sleep.delays().reduce((a, b) => a + b, 0)).toBe(60_000);
   });
 
   it('does not retry a final error', async () => {
