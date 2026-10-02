@@ -7,7 +7,7 @@ A composite action that reviews a pull request with Codex and posts the result:
 - Inline findings, each ending with its severity (Critical, Major or Minor).
 - A summary with a 🟢/🟡/🔴 merge confidence. Confidence follows the findings: 🟢 means no open finding above Minor.
 - A warning in the summary listing what neither the tests nor Codex could verify, such as a workflow that only runs after merge. It never lowers confidence.
-- A footer with the run's token usage and estimated cost, read from the Codex session log and priced from a short-context table in [`usage.js`](src/usage.js). Models missing from the table show tokens only.
+- A footer with the run's token usage and estimated cost, read from the Codex session log and priced from a short-context table in [`format-usage.js`](src/lib/format-usage.js). Models missing from the table show tokens only.
 - An approval on 🟢. The action dismisses its own earlier approval when a later push rates lower.
 
 Each run feeds the PR's earlier review threads into the prompt. It only counts replies from people with write access, and it tells Codex not to raise a finding again once it is resolved or answered.
