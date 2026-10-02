@@ -1,24 +1,21 @@
 import { comment, summary } from './lib/render-review.js';
-import { createRetry, isTransient } from './lib/retry.js';
+import { REQUEST_TIMEOUT_MS, isTransient, realSleep, withRetry } from './lib/retry.js';
 import usageLine from './lib/usage.js';
 
 const BOT = 'github-actions[bot]';
 
-// A stale approval would outlive a later push that lowered confidence.
-const dismissApprovals = async (github, retry, pull) => {
-  const reviews = await retry((request) =>
-    github.paginate(github.rest.pulls.listReviews, { ...pull, request }),
-  );
+// A stale approval would outlive a later push that lowered confidence. Best effort: one try, no retry.
+const dismissApprovals = async (github, pull) => {
+  const request = () => ({ signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const reviews = await github.paginate(github.rest.pulls.listReviews, { ...pull, request: request() });
   for (const review of reviews) {
     if (review.user?.login !== BOT || review.state !== 'APPROVED') continue;
-    await retry((request) =>
-      github.rest.pulls.dismissReview({
-        ...pull,
-        review_id: review.id,
-        message: 'Codex confidence dropped below High.',
-        request,
-      }),
-    );
+    await github.rest.pulls.dismissReview({
+      ...pull,
+      review_id: review.id,
+      message: 'Codex confidence dropped below High.',
+      request: request(),
+    });
   }
 };
 
@@ -33,12 +30,11 @@ const saveToJobSummary = async (core, text) => {
 
 export default async function postReview(
   { github, context, core },
-  { usageLine: readUsageLine = usageLine, ...retryOptions } = {},
+  { usageLine: readUsageLine = usageLine, sleep = realSleep } = {},
 ) {
   const result = JSON.parse(process.env.REVIEW);
   const pull = { ...context.repo, pull_number: context.payload.pull_request.number };
   const event = result.confidence === 'high' ? 'APPROVE' : 'COMMENT';
-  const retry = createRetry({ core, ...retryOptions });
   let usage;
   try {
     usage = await readUsageLine({
@@ -66,12 +62,12 @@ export default async function postReview(
 
   for (const [index, attempt] of attempts.entries()) {
     try {
-      await retry((request) =>
+      await withRetry(core, sleep, (signal) =>
         github.rest.pulls.createReview({
           ...pull,
           commit_id: context.payload.pull_request.head.sha,
           ...attempt,
-          request,
+          request: { signal },
         }),
       );
       break;
@@ -89,7 +85,7 @@ export default async function postReview(
   // After the review is posted, and never fatal: a stale approval is a smaller loss than the findings.
   if (event === 'COMMENT') {
     try {
-      await dismissApprovals(github, retry, pull);
+      await dismissApprovals(github, pull);
     } catch (error) {
       core.warning(`Could not dismiss earlier approvals: ${error.message}`);
     }

@@ -16,10 +16,9 @@ const run = async ({
   core = makeCore(),
   sleep = makeSleep(),
   usageLine = async () => undefined,
-  ...retryOptions
 } = {}) => {
   process.env.REVIEW = JSON.stringify(review);
-  await postReview({ github, core, context: makeContext() }, { sleep, usageLine, ...retryOptions });
+  await postReview({ github, core, context: makeContext() }, { sleep, usageLine });
   return { github, core, sleep };
 };
 
@@ -222,23 +221,15 @@ describe('retrying transient GitHub errors', () => {
   });
 
   it('passes an abort signal on every request', async () => {
-    const github = makeGithub({ reviews: [] });
-    await run({ github });
-    const [call] = created(github);
-    expect(call.request.signal).toBeInstanceOf(AbortSignal);
-    expect(github.paginate.mock.calls[0][1].request.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('ends within the total budget even when every call times out', async () => {
-    let clock = 0;
-    const github = makeGithub();
-    github.rest.pulls.createReview.mockImplementation(async () => {
-      clock += 30_000;
-      throw httpError(500, 'timed out');
+    const github = makeGithub({
+      reviews: [{ id: 1, user: { login: 'github-actions[bot]' }, state: 'APPROVED' }],
     });
-    const sleep = makeSleep();
-    await expect(run({ github, sleep, now: () => clock })).rejects.toThrow('timed out');
-    expect(clock).toBeLessThanOrEqual(240_000 + 30_000);
+    await run({ github });
+    expect(created(github)[0].request.signal).toBeInstanceOf(AbortSignal);
+    expect(github.paginate.mock.calls[0][1].request.signal).toBeInstanceOf(AbortSignal);
+    expect(github.rest.pulls.dismissReview.mock.calls[0][0].request.signal).toBeInstanceOf(
+      AbortSignal,
+    );
   });
 
   it('does not retry a 4xx', async () => {
@@ -292,36 +283,23 @@ describe('stale approvals', () => {
     expect(github.rest.pulls.dismissReview).not.toHaveBeenCalled();
   });
 
-  it('still posts the review when listing reviews keeps failing (a transient 500)', async () => {
+  it('still posts the review when listing reviews fails (the 500 that lost a review)', async () => {
     const github = makeGithub();
     github.paginate.mockRejectedValue(httpError(500, 'fetch failed'));
-    const { core, sleep } = await run({
-      github,
-      review: { ...REVIEW, findings: [finding()] },
-    });
+    const { core, sleep } = await run({ github, review: { ...REVIEW, findings: [finding()] } });
     expect(created(github)).toHaveLength(1);
-    expect(sleep.delays()).toEqual([2000, 6000, 15000]);
+    expect(github.paginate).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
     expect(core.warning).toHaveBeenCalledWith('Could not dismiss earlier approvals: fetch failed');
   });
 
-  it('retries listing the reviews and then dismisses', async () => {
-    const github = makeGithub({
-      reviews: [review(1, 'github-actions[bot]', 'APPROVED')],
-    });
-    github.paginate
-      .mockRejectedValueOnce(httpError(500))
-      .mockResolvedValueOnce([review(1, 'github-actions[bot]', 'APPROVED')]);
-    await run({ github });
+  it('does not retry a failed dismissal: it is best effort', async () => {
+    const github = makeGithub({ reviews: [review(1, 'github-actions[bot]', 'APPROVED')] });
+    github.rest.pulls.dismissReview.mockRejectedValue(httpError(502, 'bad gateway'));
+    const { core, sleep } = await run({ github });
     expect(github.rest.pulls.dismissReview).toHaveBeenCalledTimes(1);
-  });
-
-  it('retries a failed dismissal', async () => {
-    const github = makeGithub({
-      reviews: [review(1, 'github-actions[bot]', 'APPROVED')],
-    });
-    github.rest.pulls.dismissReview.mockRejectedValueOnce(httpError(502)).mockResolvedValue({});
-    await run({ github });
-    expect(github.rest.pulls.dismissReview).toHaveBeenCalledTimes(2);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith('Could not dismiss earlier approvals: bad gateway');
   });
 
   it('warns, and does not throw, when a dismissal is refused', async () => {
