@@ -22,7 +22,10 @@ const threads = async (github, context) => {
     .filter((thread) => thread.comments.nodes[0]?.author?.login === BOT)
     .map((thread) => {
       const replies = thread.comments.nodes
-        .filter((reply) => reply.author?.login === BOT || TRUSTED.has(reply.authorAssociation))
+        .filter(
+          (reply) =>
+            reply.author?.login === BOT || (reply.author && TRUSTED.has(reply.authorAssociation)),
+        )
         .map((reply) => `- **${reply.author?.login}**: ${reply.body.replace(/\n+/g, ' ')}`);
       const state = thread.isResolved ? 'resolved' : 'open';
       return [`### \`${thread.path}\` (${state})`, '', ...replies].join('\n');

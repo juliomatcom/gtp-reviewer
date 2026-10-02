@@ -8,12 +8,21 @@
     "node": "24.x"
   },
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@eslint/json": "^0.13.0",
     "eslint": "^9.0.0",
-    "globals": "^16.0.0"
+    "globals": "^16.0.0",
+    "jest": "^30.5.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testMatch": [
+      "<rootDir>/test/**/*.test.js"
+    ]
   }
 }

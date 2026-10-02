@@ -10,6 +10,10 @@ export default [
     languageOptions: { globals: globals.node },
   },
   {
+    files: ['test/**/*.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.jest } },
+  },
+  {
     files: ['**/*.json'],
     language: 'json/json',
     ...json.configs.recommended,

@@ -27,7 +27,11 @@ jobs:
           assert not missing, f"action.yml missing keys: {missing}"
           PY
 
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
       - name: Lint JS and JSON
-        run: |
-          npm ci --no-audit --no-fund
-          npx eslint .
+        run: npx eslint .
+
+      - name: Test
+        run: npm test
