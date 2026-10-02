@@ -62,7 +62,7 @@ The repo needs an `OPENAI_API_KEY` secret. On the GitHub Free plan, organization
 
 ### When GitHub does not answer
 
-Every GitHub call after the review is written is aborted after 30 seconds, so a request that never answers fails instead of hanging. Posting the review is retried up to 4 times over a minute (5s, 10s, 20s, 25s), then the step fails; it never tries the other review variants (without inline comments, comment instead of approval) because GitHub is down, only when GitHub rejects one. If the review cannot be posted, it is written to the job summary (open the run's Summary tab: the step is red but the review is not lost). Dismissing an earlier approval is one best-effort try. Keep `timeout-minutes` on the job as above: it is the only thing that ends a job whose runner itself stops reporting.
+Every GitHub call after the review is written is aborted after 30 seconds, so a request that never answers fails instead of hanging. Posting the review is tried up to 3 times: the attempts are given 20s, 30s and 60s to answer before each is aborted, and after a failed attempt it always waits 20s, then 30s, before the next, however fast the failure was. Then the step fails; it never tries the other review variants (without inline comments, comment instead of approval) because GitHub is down, only when GitHub rejects one. If the review cannot be posted, it is written to the job summary (open the run's Summary tab: the step is red but the review is not lost). Dismissing an earlier approval is one best-effort try. Keep `timeout-minutes` on the job as above: it is the only thing that ends a job whose runner itself stops reporting.
 
 ## Example output
 

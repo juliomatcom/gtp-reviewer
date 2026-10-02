@@ -36,7 +36,7 @@ describe('withRetry', () => {
     expect(signals[1].aborted).toBe(false);
   });
 
-  it('retries with growing delays and warns each time', async () => {
+  it('always waits the full 20s, then 30s, after a failed attempt, and warns each time', async () => {
     const sleep = makeSleep();
     const core = makeCore();
     const call = jest
@@ -45,20 +45,27 @@ describe('withRetry', () => {
       .mockRejectedValueOnce(httpError(502, 'bad gateway'))
       .mockResolvedValueOnce('done');
     expect(await withRetry(core, sleep, call)).toBe('done');
-    expect(sleep.delays()).toEqual([5000, 10000]);
-    expect(core.warning).toHaveBeenCalledWith('GitHub did not answer (boom); retrying in 5s');
+    expect(sleep.delays()).toEqual([20000, 30000]);
+    expect(core.warning).toHaveBeenCalledWith('GitHub did not answer (boom); retrying in 20s');
     expect(core.warning).toHaveBeenCalledWith(
-      'GitHub did not answer (bad gateway); retrying in 10s',
+      'GitHub did not answer (bad gateway); retrying in 30s',
     );
   });
 
-  it('gives up after the fourth retry, a minute in, and throws the last error', async () => {
+  it('gives the three attempts 20s, 30s and 60s to answer before each is aborted', async () => {
+    const timeout = jest.spyOn(AbortSignal, 'timeout');
+    const call = jest.fn().mockRejectedValue(httpError(503, 'down'));
+    await expect(withRetry(makeCore(), makeSleep(), call)).rejects.toThrow('down');
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([20000, 30000, 60000]);
+    timeout.mockRestore();
+  });
+
+  it('gives up after the third attempt, with no wait after it, and throws the last error', async () => {
     const sleep = makeSleep();
     const call = jest.fn().mockRejectedValue(httpError(503, 'down'));
     await expect(withRetry(makeCore(), sleep, call)).rejects.toThrow('down');
-    expect(call).toHaveBeenCalledTimes(5);
-    expect(sleep.delays()).toEqual([5000, 10000, 20000, 25000]);
-    expect(sleep.delays().reduce((a, b) => a + b, 0)).toBe(60_000);
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(sleep.delays()).toEqual([20000, 30000]);
   });
 
   it('does not retry a final error', async () => {
