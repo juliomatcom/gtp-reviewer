@@ -16,9 +16,10 @@ const run = async ({
   core = makeCore(),
   sleep = makeSleep(),
   usageLine = async () => undefined,
+  ...retryOptions
 } = {}) => {
   process.env.REVIEW = JSON.stringify(review);
-  await postReview({ github, core, context: makeContext() }, { sleep, usageLine });
+  await postReview({ github, core, context: makeContext() }, { sleep, usageLine, ...retryOptions });
   return { github, core, sleep };
 };
 
@@ -204,13 +205,40 @@ describe('retrying transient GitHub errors', () => {
     expect(created(github)).toHaveLength(2);
   });
 
-  it('gives up after three retries, then tries the next fallback', async () => {
+  it('gives up after three retries and ends: it does not try the other variants', async () => {
     const github = makeGithub();
     github.rest.pulls.createReview.mockRejectedValue(httpError(503));
     const sleep = makeSleep();
     await expect(run({ github, sleep })).rejects.toThrow('HTTP 503');
-    expect(sleep.delays()).toEqual([2000, 6000, 15000, 2000, 6000, 15000]);
-    expect(created(github)).toHaveLength(8);
+    expect(sleep.delays()).toEqual([2000, 6000, 15000]);
+    expect(created(github)).toHaveLength(4);
+  });
+
+  it('never downgrades an approval to a comment because GitHub did not answer', async () => {
+    const github = makeGithub();
+    github.rest.pulls.createReview.mockRejectedValue(httpError(500));
+    await expect(run({ github, review: { ...REVIEW, confidence: 'high' } })).rejects.toThrow();
+    expect(new Set(created(github).map((c) => c.event))).toEqual(new Set(['APPROVE']));
+  });
+
+  it('passes an abort signal on every request', async () => {
+    const github = makeGithub({ reviews: [] });
+    await run({ github });
+    const [call] = created(github);
+    expect(call.request.signal).toBeInstanceOf(AbortSignal);
+    expect(github.paginate.mock.calls[0][1].request.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('ends within the total budget even when every call times out', async () => {
+    let clock = 0;
+    const github = makeGithub();
+    github.rest.pulls.createReview.mockImplementation(async () => {
+      clock += 30_000;
+      throw httpError(500, 'timed out');
+    });
+    const sleep = makeSleep();
+    await expect(run({ github, sleep, now: () => clock })).rejects.toThrow('timed out');
+    expect(clock).toBeLessThanOrEqual(240_000 + 30_000);
   });
 
   it('does not retry a 4xx', async () => {
@@ -250,11 +278,10 @@ describe('stale approvals', () => {
   it('lists the reviews of this pull request through pagination', async () => {
     const github = makeGithub();
     await run({ github });
-    expect(github.paginate).toHaveBeenCalledWith(github.rest.pulls.listReviews, {
-      owner: 'o',
-      repo: 'r',
-      pull_number: 5,
-    });
+    expect(github.paginate).toHaveBeenCalledWith(
+      github.rest.pulls.listReviews,
+      expect.objectContaining({ owner: 'o', repo: 'r', pull_number: 5 }),
+    );
   });
 
   it('keeps an approval when confidence is still high', async () => {
@@ -316,5 +343,45 @@ describe('stale approvals', () => {
     github.rest.pulls.createReview.mockRejectedValue(httpError(403));
     await expect(run({ github })).rejects.toThrow();
     expect(github.rest.pulls.dismissReview).not.toHaveBeenCalled();
+  });
+});
+
+describe('a review that cannot be posted', () => {
+  it('is kept in the job summary, and the step still fails', async () => {
+    const github = makeGithub();
+    github.rest.pulls.createReview.mockRejectedValue(httpError(500, 'fetch failed'));
+    const core = makeCore();
+    await expect(
+      run({ github, core, review: { ...REVIEW, findings: [finding({ title: 'Bad thing' })] } }),
+    ).rejects.toThrow('fetch failed');
+    const [text] = core.summary.addRaw.mock.calls[0];
+    expect(text).toContain('Bad thing');
+    expect(text).toContain('could not be posted');
+    expect(core.summary.write).toHaveBeenCalledTimes(1);
+  });
+
+  it('is kept when every variant was rejected, too', async () => {
+    const github = makeGithub();
+    github.rest.pulls.createReview.mockRejectedValue(httpError(403, 'forbidden'));
+    const core = makeCore();
+    await expect(run({ github, core })).rejects.toThrow('forbidden');
+    expect(core.summary.write).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not written when the review was posted', async () => {
+    const core = makeCore();
+    await run({ core });
+    expect(core.summary.write).not.toHaveBeenCalled();
+  });
+
+  it('still fails with the original error when the summary cannot be written', async () => {
+    const github = makeGithub();
+    github.rest.pulls.createReview.mockRejectedValue(httpError(500, 'fetch failed'));
+    const core = makeCore();
+    core.summary.write.mockRejectedValue(new Error('disk full'));
+    await expect(run({ github, core })).rejects.toThrow('fetch failed');
+    expect(core.warning).toHaveBeenCalledWith(
+      'Could not save the review to the job summary: disk full',
+    );
   });
 });

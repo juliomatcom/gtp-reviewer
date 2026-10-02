@@ -19,7 +19,10 @@ export const finding = (over = {}) => ({
 export const httpError = (status, message = `HTTP ${status}`) =>
   Object.assign(new Error(message), { status });
 
-export const makeCore = () => ({ warning: jest.fn(), info: jest.fn() });
+export const makeCore = () => {
+  const summary = { addRaw: jest.fn(() => summary), write: jest.fn(async () => summary) };
+  return { warning: jest.fn(), info: jest.fn(), summary };
+};
 
 export const makeContext = (over = {}) => ({
   repo: { owner: 'o', repo: 'r' },

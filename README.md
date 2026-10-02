@@ -49,6 +49,8 @@ jobs:
     # pull_request_target hands secrets to forks; never review them.
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    # A composite action cannot set its own timeout; this is what ends a job whose runner stops reporting.
+    timeout-minutes: 15
     steps:
       - uses: juliomatcom/gtp-reviewer@v1
         with:
@@ -57,6 +59,10 @@ jobs:
 ```
 
 The repo needs an `OPENAI_API_KEY` secret. On the GitHub Free plan, organization secrets do not reach private repos, so add it as a repository secret there. To let the bot approve, the repo also needs the setting _Allow GitHub Actions to create and approve pull requests_. Without that setting, the review is posted as a comment instead.
+
+### When GitHub does not answer
+
+After the review is written, every GitHub call is aborted after 30 seconds and retried up to 3 times (2s, 6s, 15s), and the whole posting work gives up after 4 minutes, so the step always ends. It never tries the other review variants (without inline comments, comment instead of approval) because GitHub is down; that only happens when GitHub rejects one. If the review still cannot be posted, it is written to the job summary and the step fails. Keep `timeout-minutes` on the job as above: it is the only thing that ends a job whose runner itself stops reporting.
 
 ## Example output
 
