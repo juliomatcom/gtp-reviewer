@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { isTransient, withRetry } from '../../src/lib/retry.js';
+import { describeError, isTransient, withRetry } from '../../src/lib/retry.js';
 import { httpError, makeCore, makeSleep } from '../helpers.js';
 
 describe('isTransient', () => {
@@ -13,6 +13,30 @@ describe('isTransient', () => {
 
   it('treats an error with no status (a network failure) as transient', () => {
     expect(isTransient(new Error('fetch failed'))).toBe(true);
+  });
+});
+
+describe('describeError', () => {
+  it('is just the message when there is no cause', () => {
+    expect(describeError(new Error('boom'))).toBe('boom');
+  });
+
+  it('adds the code and message of the cause behind a bare "fetch failed"', () => {
+    const cause = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+    expect(describeError(new Error('fetch failed', { cause }))).toBe(
+      'fetch failed: ECONNRESET read ECONNRESET',
+    );
+  });
+
+  it('lists every address that was tried and follows nested causes', () => {
+    const attempt = (code) => Object.assign(new Error(`connect ${code}`), { code });
+    const aggregate = Object.assign(new Error('all failed'), {
+      errors: [attempt('ETIMEDOUT'), attempt('ENETUNREACH')],
+      cause: new Error('socket closed'),
+    });
+    expect(describeError(new Error('fetch failed', { cause: aggregate }))).toBe(
+      'fetch failed: all failed: ETIMEDOUT connect ETIMEDOUT: ENETUNREACH connect ENETUNREACH: socket closed',
+    );
   });
 });
 
@@ -46,9 +70,11 @@ describe('withRetry', () => {
       .mockResolvedValueOnce('done');
     expect(await withRetry(core, sleep, call)).toBe('done');
     expect(sleep.delays()).toEqual([20000, 30000]);
-    expect(core.warning).toHaveBeenCalledWith('GitHub did not answer (boom); retrying in 20s');
     expect(core.warning).toHaveBeenCalledWith(
-      'GitHub did not answer (bad gateway); retrying in 30s',
+      expect.stringMatching(/^GitHub did not answer after \d+ms \(boom\); retrying in 20s$/),
+    );
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringMatching(/^GitHub did not answer after \d+ms \(bad gateway\); retrying in 30s$/),
     );
   });
 
@@ -74,5 +100,20 @@ describe('withRetry', () => {
     await expect(withRetry(makeCore(), sleep, call)).rejects.toThrow('invalid');
     expect(call).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
+  });
+});
+
+describe('withRetry logging', () => {
+  it('names the cause and how long the failed attempt took', async () => {
+    const core = makeCore();
+    const cause = Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    const call = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('fetch failed', { cause }))
+      .mockResolvedValueOnce('ok');
+    await withRetry(core, makeSleep(), call);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringMatching(/after \d+ms \(fetch failed: ETIMEDOUT connect ETIMEDOUT\); retrying in 20s/),
+    );
   });
 });

@@ -195,6 +195,22 @@ describe('retrying transient GitHub errors', () => {
     expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('retrying in 30s'));
   });
 
+  it('says how big the review is before posting, and the cause when it cannot be posted', async () => {
+    const github = makeGithub();
+    const core = makeCore();
+    const cause = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+    github.rest.pulls.createReview.mockRejectedValue(new Error('fetch failed', { cause }));
+    await expect(run({ github, core, review: { ...REVIEW, findings: [finding()] } })).rejects.toThrow(
+      'fetch failed',
+    );
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringMatching(/Posting a COMMENT review: 1 inline comments, \d+ bytes/),
+    );
+    expect(core.error).toHaveBeenCalledWith(
+      'Could not post the review: fetch failed: ECONNRESET read ECONNRESET',
+    );
+  });
+
   it('treats a network failure without a status as transient', async () => {
     const github = makeGithub();
     github.rest.pulls.createReview
