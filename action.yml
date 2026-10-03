@@ -64,7 +64,7 @@ runs:
           fetch --no-tags origin "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" "+refs/pull/$PR_NUMBER/head"
 
     - name: Build prompt
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       env:
         INSTRUCTIONS_FILE: ${{ inputs.instructions-file }}
         PROMPT_FILE: ${{ runner.temp }}/codex-prompt.md
@@ -93,7 +93,7 @@ runs:
 
     - name: Post review
       if: steps.codex.outputs.final-message != ''
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       env:
         REVIEW: ${{ steps.codex.outputs.final-message }}
         CODEX_HOME: ${{ runner.temp }}/codex-home
