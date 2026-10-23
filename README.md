@@ -22,6 +22,7 @@ The review is also exposed as the `review` output: JSON matching [`review-schema
 | `model`              | `gpt-6-luna`          |                                                                                                                 |
 | `effort`             | `medium`              |                                                                                                                 |
 | `permission-profile` | `:workspace`          | Codex sandbox profile.                                                                                          |
+| `safety-strategy`    | `drop-sudo`           | How `codex-action` restricts Codex. Passed through as is; see [Self-hosted runners](#self-hosted-runners).      |
 | `instructions-file`  | none                  | Repo-relative project instructions, read from the **base branch** and appended to [`review.md`](src/review.md). |
 | `github-token`       | `${{ github.token }}` | Fetches the base and head refs, reads earlier review threads and posts the review; needs `pull-requests: write`. |
 
@@ -59,6 +60,32 @@ jobs:
 ```
 
 The repo needs an `OPENAI_API_KEY` secret. On the GitHub Free plan, organization secrets do not reach private repos, so add it as a repository secret there. To let the bot approve, the repo also needs the setting _Allow GitHub Actions to create and approve pull requests_. Without that setting, the review is posted as a comment instead.
+
+### Self-hosted runners
+
+`codex-action` defaults to `safety-strategy: drop-sudo`: before Codex starts, it runs `sudo` to remove the runner user's sudo rights. That step needs passwordless `sudo`, so on a runner whose user has none it fails with `sudo: a password is required`.
+
+If the runner user has no sudo at all, there is nothing to drop, and you can skip the step:
+
+```yaml
+- uses: juliomatcom/gtp-reviewer@v1
+  with:
+    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+    safety-strategy: unsafe
+```
+
+Check first that the user really has no sudo: `sudo -l -U <runner-user>`, run as root, should say it may not run sudo.
+
+`unsafe` does not give Codex any extra rights; Codex runs as the runner user. What it removes is the extra hardening `drop-sudo` adds on Linux: `no_new_privs`, cleared capabilities, no supplementary groups, and no access to root-owned sockets such as Docker's. The `permission-profile` sandbox still applies, but it needs unprivileged user namespaces enabled on the host.
+
+With `unsafe`, Codex and anything a PR can talk it into doing can read whatever the runner user can read. Keep that small:
+
+- Use a runner that holds nothing else valuable, and do not put its user in the `docker` group (that is root).
+- If several runners share one Unix user, a job in one can read the others' `_work` folders and credentials. Give each its own user.
+- Never run the workflow on fork PRs, as in the example above.
+- Ephemeral runners (`config.sh --ephemeral`) keep one job from leaving files or processes for the next.
+
+`unprivileged-user` also needs `sudo` to switch users, so it does not help on a runner without sudo.
 
 ### When GitHub does not answer
 
