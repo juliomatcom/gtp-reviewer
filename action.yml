@@ -18,9 +18,6 @@ inputs:
   permission-profile:
     description: Codex sandbox permission profile.
     default: ':workspace'
-  safety-strategy:
-    description: How codex-action restricts Codex privileges (drop-sudo, unprivileged-user, read-only or unsafe). The default drop-sudo needs passwordless sudo; see the README before using unsafe.
-    default: drop-sudo
   instructions-file:
     description: Repo-relative path to project review instructions, read from the base branch so a PR cannot rewrite its own review. Optional.
     default: ''
@@ -89,7 +86,6 @@ runs:
         model: ${{ inputs.model }}
         effort: ${{ inputs.effort }}
         permission-profile: ${{ inputs.permission-profile }}
-        safety-strategy: ${{ inputs.safety-strategy }}
         working-directory: ${{ github.workspace }}
         prompt-file: ${{ runner.temp }}/codex-prompt.md
         output-schema-file: ${{ github.action_path }}/src/review-schema.json
