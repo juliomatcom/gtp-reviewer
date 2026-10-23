@@ -1,5 +1,5 @@
 import { comment, summary } from './lib/render-review.js';
-import { REQUEST_TIMEOUT_MS, isTransient, realSleep, withRetry } from './lib/retry.js';
+import { REQUEST_TIMEOUT_MS, describeError, isTransient, realSleep, withRetry } from './lib/retry.js';
 import usageLine from './lib/usage.js';
 
 const BOT = 'github-actions[bot]';
@@ -60,6 +60,12 @@ export default async function postReview(
     { event: each, body: summary(result, false, usage) },
   ]);
 
+  // So a failing run says how big the request was: a large review is the first thing to suspect.
+  const [first] = attempts;
+  core.info(
+    `Posting a ${first.event} review: ${first.comments.length} inline comments, ${Buffer.byteLength(JSON.stringify(first))} bytes`,
+  );
+
   for (const [index, attempt] of attempts.entries()) {
     try {
       await withRetry(core, sleep, (signal) =>
@@ -75,10 +81,11 @@ export default async function postReview(
       // GitHub not answering is not a rejection of this variant: trying the others only wastes time
       // and could downgrade an approval to a comment. Keep the review and end the step.
       if (isTransient(error) || index === attempts.length - 1) {
+        core.error(`Could not post the review: ${describeError(error)}`);
         await saveToJobSummary(core, summary(result, false, usage));
         throw error;
       }
-      core.warning(`Review attempt ${index + 1} failed: ${error.message}`);
+      core.warning(`Review attempt ${index + 1} failed: ${describeError(error)}`);
     }
   }
 

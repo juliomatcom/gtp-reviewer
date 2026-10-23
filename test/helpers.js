@@ -21,7 +21,7 @@ export const httpError = (status, message = `HTTP ${status}`) =>
 
 export const makeCore = () => {
   const summary = { addRaw: jest.fn(() => summary), write: jest.fn(async () => summary) };
-  return { warning: jest.fn(), info: jest.fn(), summary };
+  return { warning: jest.fn(), info: jest.fn(), error: jest.fn(), summary };
 };
 
 export const makeContext = (over = {}) => ({
