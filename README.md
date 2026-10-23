@@ -22,6 +22,7 @@ The review is also exposed as the `review` output: JSON matching [`review-schema
 | `model`              | `gpt-6-luna`          |                                                                                                                 |
 | `effort`             | `medium`              |                                                                                                                 |
 | `permission-profile` | `:workspace`          | Codex sandbox profile.                                                                                          |
+| `safety-strategy`    | `drop-sudo`           | Passed to `openai/codex-action`. On a reused self-hosted runner `drop-sudo` removes the runner user's sudo for good, so the next job fails: use `unprivileged-user` or `unsafe` (Codex can then read the API key). |
 | `instructions-file`  | none                  | Repo-relative project instructions, read from the **base branch** and appended to [`review.md`](src/review.md). |
 | `github-token`       | `${{ github.token }}` | Fetches the base and head refs, reads earlier review threads and posts the review; needs `pull-requests: write`. |
 

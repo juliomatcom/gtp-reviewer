@@ -18,6 +18,9 @@ inputs:
   permission-profile:
     description: Codex sandbox permission profile.
     default: ':workspace'
+  safety-strategy:
+    description: How openai/codex-action restricts Codex. The default drop-sudo removes the runner user's sudo for good, which only a throwaway VM survives; on a reused self-hosted runner use unprivileged-user, or unsafe (Codex can then read the API key).
+    default: drop-sudo
   instructions-file:
     description: Repo-relative path to project review instructions, read from the base branch so a PR cannot rewrite its own review. Optional.
     default: ''
@@ -86,6 +89,7 @@ runs:
         model: ${{ inputs.model }}
         effort: ${{ inputs.effort }}
         permission-profile: ${{ inputs.permission-profile }}
+        safety-strategy: ${{ inputs.safety-strategy }}
         working-directory: ${{ github.workspace }}
         prompt-file: ${{ runner.temp }}/codex-prompt.md
         output-schema-file: ${{ github.action_path }}/src/review-schema.json
