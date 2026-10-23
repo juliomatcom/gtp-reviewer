@@ -22,6 +22,7 @@ The review is also exposed as the `review` output: JSON matching [`review-schema
 | `model`              | `gpt-6-luna`          |                                                                                                                 |
 | `effort`             | `medium`              |                                                                                                                 |
 | `permission-profile` | `:workspace`          | Codex sandbox profile.                                                                                          |
+| `codex-version`      | `latest`              | `@openai/codex` version to install.                                                                             |
 | `instructions-file`  | none                  | Repo-relative project instructions, read from the **base branch** and appended to [`review.md`](src/review.md). |
 | `github-token`       | `${{ github.token }}` | Fetches the base and head refs, reads earlier review threads and posts the review; needs `pull-requests: write`. |
 
@@ -59,6 +60,20 @@ jobs:
 ```
 
 The repo needs an `OPENAI_API_KEY` secret. On the GitHub Free plan, organization secrets do not reach private repos, so add it as a repository secret there. To let the bot approve, the repo also needs the setting _Allow GitHub Actions to create and approve pull requests_. Without that setting, the review is posted as a comment instead.
+
+### Runners and security
+
+The action needs no `sudo`, so it runs on a self-hosted runner whose user has none. It does not use `openai/codex-action`, which runs `sudo` on every Linux and macOS runner.
+
+The key goes over stdin to a local `codex-responses-api-proxy`, Codex only gets the proxy's port, and starts with a clean environment (`env -i`), so it sees none of the runner's tokens.
+
+What it cannot do without root is isolate the runner's Unix user. Codex runs as that user, so it can still read whatever the user can read: the runner's own `.credentials` files, other jobs' `_work` folders, SSH keys. And it can use the proxy, which only spends your key on `/v1/responses`. So:
+
+- Never run it on fork PRs; the `if` in the example above is what stops that.
+- Use a dedicated key with a spend limit, one you can rotate.
+- Give the runner a user that owns nothing else, one Unix user per runner, and use ephemeral runners (`config.sh --ephemeral`).
+- Keep `ptrace_scope` at 1 or higher (the Ubuntu default), so Codex cannot read the proxy's memory.
+- The `permission-profile` sandbox still applies, but on Linux it needs unprivileged user namespaces enabled on the host.
 
 ### When GitHub does not answer
 

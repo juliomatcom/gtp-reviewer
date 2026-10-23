@@ -18,6 +18,9 @@ inputs:
   permission-profile:
     description: Codex sandbox permission profile.
     default: ':workspace'
+  codex-version:
+    description: '@openai/codex npm version to install.'
+    default: latest
   instructions-file:
     description: Repo-relative path to project review instructions, read from the base branch so a PR cannot rewrite its own review. Optional.
     default: ''
@@ -28,13 +31,13 @@ inputs:
 outputs:
   review:
     description: Review JSON matching review-schema.json; empty when Codex returned nothing.
-    value: ${{ steps.codex.outputs.final-message }}
+    value: ${{ steps.codex-cli.outputs.final-message }}
 
 runs:
   using: composite
   steps:
-    # An unset or unreachable secret expands to an empty string, and codex-action then only
-    # times out reading the proxy's server info file instead of naming the cause.
+    # An unset or unreachable secret expands to an empty string, and the proxy then only
+    # times out writing its server info file instead of naming the cause.
     - name: Check OpenAI API key
       shell: bash
       env:
@@ -78,24 +81,92 @@ runs:
       shell: bash
       run: mkdir -p "$RUNNER_TEMP/codex-home"
 
-    - name: Run Codex
-      id: codex
-      uses: openai/codex-action@v1
-      with:
-        openai-api-key: ${{ inputs.openai-api-key }}
-        model: ${{ inputs.model }}
-        effort: ${{ inputs.effort }}
-        permission-profile: ${{ inputs.permission-profile }}
-        working-directory: ${{ github.workspace }}
-        prompt-file: ${{ runner.temp }}/codex-prompt.md
-        output-schema-file: ${{ github.action_path }}/src/review-schema.json
-        codex-home: ${{ runner.temp }}/codex-home
+    # A user-level prefix, so no sudo is needed; its own step so install scripts never see the key.
+    - name: Install Codex CLI
+      shell: bash
+      env:
+        CODEX_VERSION: ${{ inputs.codex-version }}
+      run: npm install --global --prefix "$RUNNER_TEMP/codex-cli" "@openai/codex@$CODEX_VERSION" "@openai/codex-responses-api-proxy@$CODEX_VERSION"
+
+    # The key goes to a local proxy over stdin and nowhere else; Codex gets only the proxy's port. No sudo is
+    # needed anywhere, so the runner user can be an ordinary one.
+    - name: Start Responses API proxy
+      id: codex-proxy
+      shell: bash
+      env:
+        PROXY_API_KEY: ${{ inputs.openai-api-key }}
+        CODEX_HOME: ${{ runner.temp }}/codex-home
+        SERVER_INFO_FILE: ${{ runner.temp }}/codex-proxy.json
+      run: |
+        set -euo pipefail
+        rm -f "$SERVER_INFO_FILE"
+        # The subshell replaces itself with the proxy, so no copy of the key stays in a shell.
+        (
+          exec env -u PROXY_API_KEY -u NODE_OPTIONS NODE_OPTIONS=--disable-sigusr1 \
+            "$RUNNER_TEMP/codex-cli/bin/codex-responses-api-proxy" --http-shutdown --server-info "$SERVER_INFO_FILE" <<< "$PROXY_API_KEY"
+        ) &
+        # The file can be seen half written: keep trying until it parses.
+        port=
+        for _ in {1..20}; do
+          port=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).port" "$SERVER_INFO_FILE" 2>/dev/null) && [ -n "$port" ] && break
+          port=
+          sleep 1
+        done
+        [ -n "$port" ] || { echo "::error title=Responses API proxy did not start::No port in $SERVER_INFO_FILE"; exit 1; }
+        echo "port=$port" >> "$GITHUB_OUTPUT"
+        cat > "$CODEX_HOME/config.toml" <<TOML
+        model_provider = "review-proxy"
+
+        [model_providers.review-proxy]
+        name = "Responses API proxy"
+        base_url = "http://127.0.0.1:$port/v1"
+        wire_api = "responses"
+        TOML
+
+    # A clean environment, so Codex sees none of the runner's tokens or secrets.
+    - name: Run Codex CLI
+      id: codex-cli
+      shell: bash
+      env:
+        CODEX_HOME: ${{ runner.temp }}/codex-home
+        MODEL: ${{ inputs.model }}
+        EFFORT: ${{ inputs.effort }}
+        PERMISSION_PROFILE: ${{ inputs.permission-profile }}
+        PROMPT_FILE: ${{ runner.temp }}/codex-prompt.md
+        SCHEMA_FILE: ${{ github.action_path }}/src/review-schema.json
+        OUTPUT_FILE: ${{ runner.temp }}/codex-review.json
+      run: |
+        set -euo pipefail
+        env -i PATH="$PATH" HOME="$HOME" LANG="${LANG:-C.UTF-8}" CODEX_HOME="$CODEX_HOME" \
+          "$RUNNER_TEMP/codex-cli/bin/codex" exec \
+          --skip-git-repo-check \
+          --cd "$GITHUB_WORKSPACE" \
+          --output-last-message "$OUTPUT_FILE" \
+          --output-schema "$SCHEMA_FILE" \
+          --model "$MODEL" \
+          --config "model_reasoning_effort=\"$EFFORT\"" \
+          --config "default_permissions=\"$PERMISSION_PROFILE\"" \
+          < "$PROMPT_FILE"
+        delimiter="EOF_$(openssl rand -hex 16)"
+        {
+          echo "final-message<<$delimiter"
+          cat "$OUTPUT_FILE"
+          echo
+          echo "$delimiter"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Stop Responses API proxy
+      if: always() && steps.codex-proxy.outputs.port != ''
+      shell: bash
+      env:
+        PORT: ${{ steps.codex-proxy.outputs.port }}
+      run: curl --silent --max-time 10 "http://127.0.0.1:$PORT/shutdown" || true
 
     - name: Post review
-      if: steps.codex.outputs.final-message != ''
+      if: steps.codex-cli.outputs.final-message != ''
       uses: actions/github-script@v9
       env:
-        REVIEW: ${{ steps.codex.outputs.final-message }}
+        REVIEW: ${{ steps.codex-cli.outputs.final-message }}
         CODEX_HOME: ${{ runner.temp }}/codex-home
         MODEL: ${{ inputs.model }}
         EFFORT: ${{ inputs.effort }}
